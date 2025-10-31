@@ -1,125 +1,103 @@
-import { HttpsAgent } from "agentkeepalive";
+// /lib/elevenlabs/agent/createAgent.ts
+
 import connectDB from "@/lib/db";
 import Agent from "@/models/agentModel";
-import { combineTools, getDefaultSystemTools } from "@/lib/systemTools";
-import { buildBuiltInTools, sanitizeAgentConfigForEL, AnyObj } from "./utils";
+import { combineTools } from "@/lib/systemTools";
 
-const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY!;
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 
-const httpsAgent = new HttpsAgent({
-  keepAlive: true,
-  timeout: 60000,
-  freeSocketTimeout: 30000,
-});
+if (!ELEVENLABS_API_KEY) {
+  throw new Error("ELEVENLABS_API_KEY environment variable is not set");
+}
 
-export async function createAgent(agentData: AnyObj) {
+interface CreateAgentData {
+  userId: string;
+  name: string;
+  description?: string;
+  voice_id: string;
+  first_message: string;
+  system_prompt: string;
+  template_id?: string;
+  template_name?: string;
+  llm_model?: string;
+  temperature?: number;
+  language?: string;
+  max_duration_seconds?: number;
+  knowledge_documents?: Array<{
+    document_id: string;
+    name: string;
+    type: 'file' | 'url' | 'text';
+    content?: string;
+    url?: string;
+    file_name?: string;
+    created_at: Date;
+  }>;
+  tools?: string[];
+}
+export async function createAgent(agentData: any) {
+  await connectDB();
+
   try {
-    // Combine tools
-    const allTools = combineTools(agentData.tools || []);
-    const builtInTools = buildBuiltInTools(agentData);
-
-    // --- Fix: Set TTS model based on language ---
-    const effectiveLanguage = agentData.language || "en";
-
-    // Use the full model names required by the ElevenLabs API
-    const allowedEnglishTTS = ["eleven_turbo_v2", "eleven_flash_v2"];
-    let ttsModel = agentData.ttsModel || "eleven_turbo_v2"; // default to the correct full name
-    if (effectiveLanguage === "en" && !allowedEnglishTTS.includes(ttsModel)) {
-      ttsModel = "eleven_turbo_v2"; // force English-safe model
-    }
-
-    // ASR model selection
-    const asrModel = effectiveLanguage === "en" ? "eleven_turbo_v2" : "nova-2-general";
-
-    // Build agent config
-    const agentConfig: AnyObj = {
+    // Construct the payload according to ElevenLabs API documentation
+    const payload = {
       name: agentData.name,
       conversation_config: {
         agent: {
-          first_message: agentData.first_message,
-          language: effectiveLanguage,
-          disable_first_message_interruptions: agentData.disableFirstMessageInterruptions || false,
           prompt: {
-            prompt: agentData.system_prompt,
-            llm: agentData.llm_model || "gpt-4o-mini",
-            temperature: typeof agentData.temperature === "number" ? agentData.temperature : 0.3,
+            system: agentData.system_prompt,
+            first_message: agentData.first_message,
             knowledge_base: (agentData.knowledge_documents || [])
-              .filter((doc: AnyObj) => !!doc.document_id)
-              .map((doc: AnyObj) => ({
-                id: doc.document_id,
-                name: doc.name,
-                type: doc.type,
-                usage_mode: "auto",
-              })),
-            tools: (allTools || []).filter((t: AnyObj) => t?.type !== "system"),
-            built_in_tools: builtInTools,
+              .filter((doc: any) => doc.document_id)
+              .map((doc: any) => ({ id: doc.document_id })),
           },
+          llm: {
+            model: agentData.llm_model,
+            temperature: agentData.temperature,
+          },
+          language: agentData.language,
+          tools: combineTools(agentData.tools, agentData.systemTools),
         },
         tts: {
-          model_id: ttsModel,
+          model: "eleven-multilingual-v1", // Or make this configurable
           voice_id: agentData.voice_id,
-          stability: typeof agentData.voiceStability === "number" ? agentData.voiceStability : 0.5,
-          similarity_boost: typeof agentData.voiceSimilarityBoost === "number" ? agentData.voiceSimilarityBoost : 0.8,
         },
         asr: {
-          model: asrModel,
-          language: agentData.asrLanguage || "auto",
-        },
-        turn: {
-          mode: agentData.turnMode || "turn",
-          turn_timeout: typeof agentData.turnTimeout === "number" ? agentData.turnTimeout : 7.0,
+          model: "nova-2-general",
+          language: "auto",
         },
         conversation: {
-          max_duration_seconds: typeof agentData.max_duration_seconds === "number" ? agentData.max_duration_seconds : 1800,
+          max_duration_seconds: agentData.max_duration_seconds,
         },
       },
     };
 
-    // Sanitize for ElevenLabs API
-    const cleanConfig = sanitizeAgentConfigForEL(agentConfig);
-
-    const response = await fetch("https://api.elevenlabs.io/v1/convai/agents/create", {
+    const response = await fetch("https://api.elevenlabs.io/v1/agents", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "xi-api-key": ELEVENLABS_API_KEY,
       },
-      body: JSON.stringify(cleanConfig),
+      body: JSON.stringify(payload),
     });
 
+    // --- FIX: Add error handling for the API call ---
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("ElevenLabs API Error:", { status: response.status, text: errorText });
-      throw new Error(`Failed to create agent with ElevenLabs (${response.status}): ${errorText}`);
+      const errorBody = await response.text();
+      console.error("ElevenLabs API Error:", errorBody);
+      throw new Error(`Failed to create agent with ElevenLabs API: ${response.statusText}`);
     }
 
-    const elevenLabsAgent = await response.json();
-    console.log("🧠 ElevenLabs Agent Response:", elevenLabsAgent);
+    const result = await response.json();
 
-    // Extract agent ID
-    const agentId = elevenLabsAgent.agent_id || elevenLabsAgent.id;
-    if (!agentId) {
-      console.error("❌ ElevenLabs response missing agent_id or id:", elevenLabsAgent);
-      throw new Error("Invalid ElevenLabs response: Missing agent ID");
-    }
-
-    // Save to DB
-    await connectDB();
-    const agent = new Agent({
+    // --- FIX: Ensure the agentId from the response is saved ---
+    const newAgent = await Agent.create({
       ...agentData,
-      agentId,
-      systemTools: getDefaultSystemTools(),
+      agentId: result.id, // Use the ID from the ElevenLabs response
     });
-    await agent.save();
 
-    return {
-      agent_id: agentId,
-      name: agentData.name,
-      message: "AI agent created successfully.",
-    };
-
-  } catch (error: any) {
-    console.error("Error in createAgent service:", error);
+    return newAgent;
+  } catch (error) {
+    console.error("Error creating agent:", error);
     throw error;
   }
 }

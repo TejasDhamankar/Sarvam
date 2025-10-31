@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState } from "react"; // <--- Removed 'useRef' as it's no longer needed by audioRef
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
 import { useForm } from "react-hook-form";
@@ -29,7 +29,7 @@ import { VariableTextarea } from "@/components/ui/variable-textarea";
 
 // Icons
 import {
-    Search, ArrowLeft, PlayCircle, PauseCircle, Bot, UserRoundCheck, HelpCircle, Clock, Lightbulb, Sparkles, Mic,
+    Search, ArrowLeft, PlayCircle, PauseCircle, Bot, UserRoundCheck, HelpCircle, Clock, Lightbulb, Sparkles, Mic, // <--- PlayCircle & PauseCircle no longer used but fine to leave
     Settings, Volume2, Wand2, User, Globe, CalendarCheck, Calendar, CheckCircle, Upload, FileText,
     Link as LinkIcon, BookOpen, Trash2, Plus, Calculator, Search as SearchIcon, Mail, Wrench
 } from "lucide-react";
@@ -39,20 +39,19 @@ import { Label } from "@radix-ui/react-label";
 const agentSchema = z.object({
     name: z.string().min(3, "Name must be at least 3 characters"),
     description: z.string().optional(),
-    voice_id: z.string().min(1, "Please select a voice"),
-    first_message: z.string().min(3, "First message is required"),
-    system_prompt: z.string().min(10, "System prompt must be at least 10 characters"),
-    template_id: z.string().optional(),
-    llm_model: z.string().optional(),
+    voiceId: z.string().min(1, "Please select a voice"), // <-- Changed
+    firstMessage: z.string().min(3, "First message is required"), // <-- Changed
+    systemPrompt: z.string().min(10, "System prompt must be at least 10 characters"), // <-- Changed
+    templateId: z.string().optional(), // <-- Changed
+    llmModel: z.string().optional(), // <-- Changed
     temperature: z.number().min(0).max(1).optional(),
     language: z.string().optional(),
-    max_duration_seconds: z.number().min(60).max(7200).optional(),
-    knowledge_documents: z.array(z.object({
-        type: z.enum(['file', 'url', 'text']),
+    maxDurationSeconds: z.number().min(60).max(7200).optional(), // <-- Changed
+    knowledgeDocuments: z.array(z.object({ // <-- Changed
+        type: z.enum(['url', 'text']),
         name: z.string(),
         content: z.string().optional(),
         url: z.string().optional(),
-        file: z.any().optional(),
     })).optional(),
     tools: z.array(z.string()).optional(),
 });
@@ -88,14 +87,17 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 export default function NewAgent() {
     const router = useRouter();
     const { user } = useAuth();
+    // This 'useSWR' hook is now correct, as it fetches from your /api/voices route
     const { data, error, isLoading } = useSWR<{ voices: { id: string, name: string, tags: string, demo: string }[] }>("/api/voices", fetcher);
 
     const [creatingAgent, setCreatingAgent] = useState(false);
     const [voiceSearch, setVoiceSearch] = useState("");
-    const [playingVoice, setPlayingVoice] = useState<string | null>(null);
-    const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
-    const [newDocumentType, setNewDocumentType] = useState<'file' | 'url' | 'text'>('text');
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    // --- REMOVED ---
+    // const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+    // const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
+    
+    const [newDocumentType, setNewDocumentType] = useState<'url' | 'text'>('text'); 
 
     const allVoices = data?.voices || [];
 
@@ -104,43 +106,32 @@ export default function NewAgent() {
         defaultValues: {
             name: "",
             description: "",
-            voice_id: "",
-            first_message: "Hello! I'm here to assist you today. How can I help you?",
-            system_prompt: "You are a friendly and professional AI assistant. Your goal is to provide helpful, accurate information and assist users with their queries in a conversational manner.",
-            template_id: "",
-            llm_model: "gpt-4o-mini",
+            voiceId: "",
+            firstMessage: "Hello! I'm here to assist you today. How can I help you?",
+            systemPrompt: "You are a friendly and professional AI assistant. Your goal is to provide helpful, accurate information and assist users with their queries in a conversational manner.",
+            templateId: "",
+            llmModel: "gpt-4o-mini",
             temperature: 0.3,
             language: "en",
-            max_duration_seconds: 1800,
-            knowledge_documents: [],
+            maxDurationSeconds: 1800,
+            knowledgeDocuments: [],
             tools: [],
         }
     });
 
-    const selectedTemplate = form.watch("template_id");
-    const knowledgeDocuments = form.watch("knowledge_documents") || [];
-    const maxDuration = form.watch("max_duration_seconds") || 1800;
+    const selectedTemplate = form.watch("templateId");
+    const knowledgeDocuments = form.watch("knowledgeDocuments") || [];
+    const maxDuration = form.watch("maxDurationSeconds") || 1800;
 
-    const handlePlayVoice = (voiceId: string, demoUrl: string) => {
-        if (playingVoice === voiceId) {
-            audioRef?.pause();
-            setPlayingVoice(null);
-        } else {
-            audioRef?.pause();
-            const audio = new Audio(demoUrl);
-            audio.onended = () => setPlayingVoice(null);
-            audio.play().catch(err => console.error("Error playing audio:", err));
-            setAudioRef(audio);
-            setPlayingVoice(voiceId);
-        }
-    };
+    // --- REMOVED ---
+    // const handlePlayVoice = (voiceId: string, demoUrl: string) => { ... };
 
     const applyTemplate = (templateId: string) => {
         const template = agentTemplates.find(t => t.id === templateId);
         if (template) {
-            form.setValue("system_prompt", template.prompt);
-            form.setValue("first_message", template.firstMessage);
-            form.setValue("template_id", templateId);
+            form.setValue("systemPrompt", template.prompt);
+            form.setValue("firstMessage", template.firstMessage);
+            form.setValue("templateId", templateId);
             if (!form.getValues("name").trim()) {
                 form.setValue("name", template.title);
             }
@@ -148,94 +139,49 @@ export default function NewAgent() {
     };
 
     const addKnowledgeDocument = () => {
-        const currentDocs = form.getValues("knowledge_documents") || [];
-        if (newDocumentType === 'file') {
-            fileInputRef.current?.click();
-        } else {
-            form.setValue("knowledge_documents", [...currentDocs, {
-                type: newDocumentType,
-                name: newDocumentType === 'url' ? 'New Website URL' : 'New Text Document',
-                content: newDocumentType === 'text' ? '' : undefined,
-                url: newDocumentType === 'url' ? '' : undefined,
-            }]);
-        }
-    };
-
-    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-            const currentDocs = form.getValues("knowledge_documents") || [];
-            form.setValue("knowledge_documents", [...currentDocs, { type: 'file', name: file.name, file: file }]);
-        }
+        const currentDocs = form.getValues("knowledgeDocuments") || [];
+        form.setValue("knowledgeDocuments", [...currentDocs, {
+            type: newDocumentType,
+            name: newDocumentType === 'url' ? 'New Website URL' : 'New Text Document',
+            content: newDocumentType === 'text' ? '' : undefined,
+            url: newDocumentType === 'url' ? '' : undefined,
+        }]);
     };
     
     const updateKnowledgeDocument = (index: number, field: string, value: string) => {
-        const currentDocs = form.getValues("knowledge_documents") || [];
+        const currentDocs = form.getValues("knowledgeDocuments") || [];
         const updatedDocs = currentDocs.map((doc, i) => (i === index ? { ...doc, [field]: value } : doc));
-        form.setValue("knowledge_documents", updatedDocs);
+        form.setValue("knowledgeDocuments", updatedDocs);
     };
 
     const removeKnowledgeDocument = (index: number) => {
-        const currentDocs = form.getValues("knowledge_documents") || [];
-        form.setValue("knowledge_documents", currentDocs.filter((_, i) => i !== index));
+        const currentDocs = form.getValues("knowledgeDocuments") || [];
+        form.setValue("knowledgeDocuments", currentDocs.filter((_, i) => i !== index));
     };
 
     const onSubmit = async (payload: z.infer<typeof agentSchema>) => {
-        try {
-          setCreatingAgent(true);
-      
-          // Transform to camelCase
-          const agentData = {
-            name: payload.name,
-            description: payload.description,
-            voiceId: payload.voice_id,       // ✅ camelCase
-            firstMessage: payload.first_message, // ✅ camelCase
-            systemPrompt: payload.system_prompt, // ✅ camelCase
-            templateId: payload.template_id,  // optional
-            llmModel: payload.llm_model,      // optional
-            temperature: payload.temperature, // optional
-            language: payload.language,       // optional
-            maxDurationSeconds: payload.max_duration_seconds, // optional
-            tools: payload.tools,             // optional
-            knowledgeDocuments: (payload.knowledge_documents || []).map(doc => ({
-              type: doc.type,
-              name: doc.name,
-              content: doc.content,
-              url: doc.url,
-            })),
-          };
-      
-          const formData = new FormData();
-          formData.append('agentData', JSON.stringify(agentData));
-      
-          // Append any files separately
-          (payload.knowledge_documents || []).forEach((doc, index) => {
-            if (doc.type === 'file' && doc.file) {
-              formData.append(`file_${index}`, doc.file, doc.name);
-            }
-          });
-      
-          const response = await fetch("/api/createAgent", {
-            method: "POST",
-            body: formData,
-          });
-      
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || "Failed to create agent");
-          }
-      
-          const result = await response.json();
-          console.log("Agent created successfully:", result);
-          router.push("/dashboard/agents");
-      
-        } catch (error) {
-          console.error("Error creating agent:", error);
-        } finally {
-          setCreatingAgent(false);
+      try {
+        setCreatingAgent(true);
+        const agentData = payload;
+    
+        const response = await fetch("/api/createAgent", {
+          method: "POST",
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(agentData), 
+        });
+    
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || "Failed to create agent");
         }
-      };
-      
+    
+        router.push("/dashboard/agents");
+      } catch (error: any) {
+        console.error("Error creating agent:", error.message);
+      } finally {
+        setCreatingAgent(false);
+      }
+    };
 
     const templatesByCategory = agentTemplates.reduce((acc, template) => {
         if (!acc[template.category]) acc[template.category] = [];
@@ -325,7 +271,7 @@ export default function NewAgent() {
                                                                     <FormMessage />
                                                                 </FormItem>
                                                             )} />
-                                                            <FormField control={form.control} name="voice_id" render={({ field }) => (
+                                                            <FormField control={form.control} name="voiceId" render={({ field }) => (
                                                                 <FormItem>
                                                                     <FormLabel className="text-[#A7A7A7]">Voice Selection</FormLabel>
                                                                     <Input placeholder="Search voices..." value={voiceSearch} onChange={(e) => setVoiceSearch(e.target.value)} />
@@ -334,9 +280,13 @@ export default function NewAgent() {
                                                                             {isLoading ? <p className="text-[#A7A7A7]">Loading voices...</p> : allVoices.filter(v => v.name.toLowerCase().includes(voiceSearch.toLowerCase())).map(voice => (
                                                                                 <div key={voice.id} onClick={() => field.onChange(voice.id)} className={cn("border rounded-lg p-3 cursor-pointer flex justify-between items-center border-[#333333] hover:bg-white/5", field.value === voice.id && "ring-2 ring-[#A7B3AC] border-[#A7B3AC]")}>
                                                                                     <div><p className="font-medium text-[#F3FFD4]">{voice.name}</p><p className="text-xs text-[#A7A7A7]">{voice.tags}</p></div>
+                                                                                    
+                                                                                    {/* --- REMOVED ---
                                                                                     <Button type="button" variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handlePlayVoice(voice.id, voice.demo); }}>
                                                                                         {playingVoice === voice.id ? <PauseCircle className="h-5 w-5 text-[#A7B3AC]" /> : <PlayCircle className="h-5 w-5 text-[#A7A7A7]" />}
                                                                                     </Button>
+                                                                                    --- END REMOVED --- */}
+
                                                                                 </div>
                                                                             ))}
                                                                         </div>
@@ -350,15 +300,15 @@ export default function NewAgent() {
                                                 <TabsContent value="behavior" className="m-0">
                                                     <Card className="border-[#333333] bg-[#1a1a1a] shadow-md">
                                                         <CardHeader><CardTitle className="text-[#F3FFD4]">Agent Behavior</CardTitle><CardDescription className="text-[#A7A7A7]">Define how your agent communicates and responds.</CardDescription></CardHeader>
-                                                        <CardContent className="space-y-6">
-                                                            <FormField control={form.control} name="system_prompt" render={({ field }) => (
+                                                        <CardContent className="space-y-6"> 
+                                                            <FormField control={form.control} name="systemPrompt" render={({ field }) => (
                                                                 <FormItem>
                                                                     <FormLabel className="text-[#A7A7A7]">System Prompt</FormLabel>
                                                                     <FormControl><Textarea rows={8} placeholder="You are a friendly AI assistant..." {...field} /></FormControl>
                                                                     <FormMessage />
                                                                 </FormItem>
-                                                            )} />
-                                                            <FormField control={form.control} name="first_message" render={({ field }) => (
+                                                            )} /> 
+                                                            <FormField control={form.control} name="firstMessage" render={({ field }) => (
                                                                 <FormItem>
                                                                     <FormLabel className="text-[#A7A7A7]">First Message</FormLabel>
                                                                     <FormControl><Textarea rows={3} placeholder="Hello! How can I help you today?" {...field} /></FormControl>
@@ -374,18 +324,16 @@ export default function NewAgent() {
                                                         <CardContent className="space-y-6">
                                                             <div>
                                                                 <Label className="text-[#A7A7A7] font-semibold">Knowledge Base</Label>
-                                                                <p className="text-sm text-[#A7A7A7]/80 mb-4">Provide information via text, URLs, or documents.</p>
+                                                                <p className="text-sm text-[#A7A7A7]/80 mb-4">Provide information via text or URLs.</p>
                                                                 <div className="flex items-center gap-2 mb-4">
-                                                                    <Select value={newDocumentType} onValueChange={(value: 'file' | 'url' | 'text') => setNewDocumentType(value)}>
+                                                                    <Select value={newDocumentType} onValueChange={(value: 'url' | 'text') => setNewDocumentType(value)}>
                                                                         <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
                                                                         <SelectContent>
                                                                             <SelectItem value="text"><div className="flex items-center gap-2"><FileText className="h-4 w-4" /> Text</div></SelectItem>
                                                                             <SelectItem value="url"><div className="flex items-center gap-2"><LinkIcon className="h-4 w-4" /> URL</div></SelectItem>
-                                                                            <SelectItem value="file"><div className="flex items-center gap-2"><Upload className="h-4 w-4" /> File</div></SelectItem>
                                                                         </SelectContent>
                                                                     </Select>
                                                                     <Button type="button" variant="outline" onClick={addKnowledgeDocument} className="border-[#333333] hover:bg-white/5 text-[#A7A7A7]"><Plus className="h-4 w-4 mr-2" /> Add</Button>
-                                                                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".pdf,.doc,.docx,.txt" className="hidden" />
                                                                 </div>
                                                                 <div className="space-y-3">{knowledgeDocuments.map((doc, index) => (
                                                                     <div key={index} className="border border-[#333333] rounded-lg p-3 space-y-2 bg-[#111111]/50">
@@ -417,7 +365,7 @@ export default function NewAgent() {
                                                     <Card className="border-[#333333] bg-[#1a1a1a] shadow-md">
                                                         <CardHeader><CardTitle className="text-[#F3FFD4]">Advanced Settings</CardTitle><CardDescription className="text-[#A7A7A7]">Fine-tune the technical parameters of your agent.</CardDescription></CardHeader>
                                                         <CardContent className="space-y-6">
-                                                            <FormField control={form.control} name="llm_model" render={({ field }) => (
+                                                            <FormField control={form.control} name="llmModel" render={({ field }) => (
                                                                 <FormItem>
                                                                     <FormLabel className="text-[#A7A7A7]">Language Model</FormLabel>
                                                                     <Select onValueChange={field.onChange} defaultValue={field.value}>
@@ -441,7 +389,7 @@ export default function NewAgent() {
                                                                     </Select>
                                                                 </FormItem>
                                                             )} />
-                                                            <FormField control={form.control} name="max_duration_seconds" render={({ field }) => (
+                                                            <FormField control={form.control} name="maxDurationSeconds" render={({ field }) => (
                                                                 <FormItem>
                                                                     <FormLabel className="text-[#A7A7A7]">Max Call Duration: {Math.floor(maxDuration / 60)} minutes</FormLabel>
                                                                     <FormControl><Slider min={60} max={7200} step={60} value={[field.value || 1800]} onValueChange={(v) => field.onChange(v[0])} /></FormControl>

@@ -155,7 +155,7 @@ export default function CallsPage() {
     const onMakeCall = async (formData: z.infer<typeof dialerSchema>) => {
         try {
             setMakingCall(true);
-            const cleanedPhoneNumber = formData.phoneNumber.replace(/\D/g, '');
+            const cleanedPhoneNumber = formData.phoneNumber.replace(/[^\d+]/g, ''); // <--- FIX
 
             const response = await fetch("/api/calls", {
                 method: "POST",

@@ -28,7 +28,6 @@ import {
   SheetClose
 } from "@/components/ui/sheet";
 import { Header } from "@/components/ui/header";
-import ElevenLabsWidget from "@/components/ElevenLabsWidget";
 
 export default function Home() {
   const [scrolled, setScrolled] = useState(false);
@@ -84,7 +83,6 @@ export default function Home() {
         }}
       />
       <Header />
-      <ElevenLabsWidget />
       <main className="relative z-10">
         <HeroSection />
         <ProductShowcase />

@@ -4,7 +4,7 @@ import Call from '@/models/callModel';
 import Contact from '@/models/contactModel';
 import Agent from '@/models/agentModel';
 import { getUserFromRequest } from '@/lib/jwt';
-import { initiateCall } from '@/lib/elevenLabs'; // Assuming this is your service function
+import { initiateCall } from '@/lib/elevenLabs/call/initiateCall'; // Assuming this is your service function
 import { parse } from 'csv-parse/sync';
 
 export async function GET(request: NextRequest) {
